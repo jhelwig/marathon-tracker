@@ -23,10 +23,13 @@
 </template>
 
 <script>
+import config from '../../config/index'
+
 export default {
   name: 'Dashboard',
   data () {
     return {
+      apiBase: config.dev.streamlabsApiBase,
       apiConfiguration: this.parseConfig(),
       apiConfigurationErrors: [],
       hasConfig: this.hasValidConfiguration()
@@ -65,7 +68,7 @@ export default {
       localStorage.setItem('apiConfiguration', apiConfig)
       if (this.hasValidConfiguration()) {
         this.hasConfig = true
-        window.location = `https://www.streamlabs.com/api/v1.0/authorize?client_id=${this.apiConfiguration.clientId}&redirect_uri=http://lvh.me:8080/&response_type=code&scope=donations.read+socket.token+points.read`
+        window.location = `${this.apiBase}/authorize?client_id=${this.apiConfiguration.clientId}&redirect_uri=http://lvh.me:8080/&response_type=code&scope=donations.read+socket.token+points.read`
       } else {
         this.apiConfigurationErrors = [{
           title: 'Invalid Configuration',
@@ -87,7 +90,7 @@ export default {
         }
       })
 
-      xhr.open('POST', `https://streamlabs.com/api/v1.0/token`)
+      xhr.open('POST', `${this.apiBase}/token`)
       xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded')
 
       xhr.send(`grant_type=authorization_code&client_id=${this.apiConfiguration.clientId}&client_secret=${this.apiConfiguration.clientSecret}&redirect_uri=${encodeURIComponent('http://lvh.me:8080/')}&code=${this.apiConfiguration.oauthCode}`)
@@ -106,7 +109,7 @@ export default {
         }
       })
 
-      xhr.open('GET', `https://streamlabs.com/api/v1.0/socket/token?access_token=${this.apiConfiguration.oauthCode}`)
+      xhr.open('GET', `${this.apiBase}/socket/token?access_token=${this.apiConfiguration.oauthCode}`)
 
       xhr.send(data)
     },
