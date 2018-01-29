@@ -10,10 +10,10 @@
       <form v-on:submit="configurationSubmit">
         <fieldset>
           <label name="clientId">StreamLabs Client ID
-            <input type="text" name="clientId" v-model="apiConfiguration.clientId" />
+            <input type="text" name="clientId" v-model="apiConfigurationForm.clientId" />
           </label>
           <label name="clientSecret">StreamLabs Client Secret
-            <input type="text" name="clientSecret" v-model="apiConfiguration.clientSecret" />
+            <input type="text" name="clientSecret" v-model="apiConfigurationForm.clientSecret" />
           </label>
         </fieldset>
         <button type="submit">Save</button>
@@ -30,42 +30,34 @@ export default {
   data () {
     return {
       apiBase: config.dev.streamlabsApiBase,
-      apiConfiguration: this.parseConfig(),
-      apiConfigurationErrors: [],
-      hasConfig: this.hasValidConfiguration()
+      apiConfigurationForm: {},
+      apiConfigurationErrors: []
     }
   },
   created () {
     console.log('We are in the created hook')
     if (this.$route.query.code) {
-      let apiConfig = this.parseConfig()
-      apiConfig.oauthCode = this.$route.query.code
-      localStorage.setItem('apiConfiguration', JSON.stringify(apiConfig))
-      this.apiConfiguration.oauthCode = apiConfig.oauthCode
-      console.log('We saved "code"')
-    }
-
-    if (this.apiConfiguration.oauthCode) {
-      console.log('getting new socket token')
-      this.getAccessToken()
+      const oauthCode = this.$route.query.code
+      this.getAccessToken(oauthCode)
     }
   },
   computed: {
+    apiConfiguration () {
+      console.log('Wr are pretending to compute', localStorage.getItem('apiConfiguration'))
+      return JSON.parse(localStorage.getItem('apiConfiguration')) || {}
+    },
     hasConfigErrors () {
       return this.apiConfigurationErrors.length
     },
     needsConfiguration () {
-      return !this.hasConfig
+      return !this.hasValidConfiguration()
     }
   },
   methods: {
     configurationSubmit (event) {
       event.preventDefault()
-      const apiConfig = JSON.stringify({
-        clientId: this.apiConfiguration.clientId,
-        clientSecret: this.apiConfiguration.clientSecret
-      })
-      localStorage.setItem('apiConfiguration', apiConfig)
+      this.setApiConfigurationValue('clientId', this.apiConfigurationForm.clientId)
+      this.setApiConfigurationValue('clientSecret', this.apiConfigurationForm.clientSecret)
       if (this.hasValidConfiguration()) {
         this.hasConfig = true
         window.location = `${this.apiBase}/authorize?client_id=${this.apiConfiguration.clientId}&redirect_uri=http://lvh.me:8080/&response_type=code&scope=donations.read+socket.token+points.read`
@@ -77,23 +69,19 @@ export default {
       }
     },
 
-    getAccessToken () {
+    getAccessToken (oauthCode) {
       const xhr = new XMLHttpRequest()
       // const data = JSON.stringify(false)
       xhr.withCredentials = true
 
-      xhr.addEventListener('readystatechange', function () {
-        console.log(arguments)
-        if (this.readyState === this.DONE) {
-          console.log('WE get this frm the access request')
-          console.log(this.responseText)
-        }
+      xhr.addEventListener('load', (event) => {
+        this.setApiConfigurationValue('token_details', JSON.parse(event.currentTarget.response))
       })
 
       xhr.open('POST', `${this.apiBase}/token`)
       xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded')
 
-      xhr.send(`grant_type=authorization_code&client_id=${this.apiConfiguration.clientId}&client_secret=${this.apiConfiguration.clientSecret}&redirect_uri=${encodeURIComponent('http://lvh.me:8080/')}&code=${this.apiConfiguration.oauthCode}`)
+      xhr.send(`grant_type=authorization_code&client_id=${this.apiConfiguration.clientId}&client_secret=${this.apiConfiguration.clientSecret}&redirect_uri=${encodeURIComponent('http://lvh.me:8080/')}&code=${oauthCode}`)
     },
 
     getSocketToken () {
@@ -101,8 +89,7 @@ export default {
       const data = JSON.stringify(false)
       xhr.withCredentials = true
 
-      xhr.addEventListener('readystatechange', function () {
-        console.log(arguments)
+      xhr.addEventListener('load', (event) => {
         if (this.readyState === this.DONE) {
           console.log('WE get this frm the access request')
           console.log(this.responseText)
@@ -115,12 +102,13 @@ export default {
     },
 
     hasValidConfiguration () {
-      const apiConfig = this.parseConfig()
-      return apiConfig.clientId && apiConfig.clientSecret
+      return this.apiConfiguration.clientId && this.apiConfiguration.clientSecret
     },
 
-    parseConfig () {
-      return JSON.parse(localStorage.getItem('apiConfiguration')) || {}
+    setApiConfigurationValue (name, value) {
+      let apiConfig = this.apiConfiguration
+      apiConfig[name] = value
+      localStorage.setItem('apiConfiguration', JSON.stringify(apiConfig))
     }
   }
 }
