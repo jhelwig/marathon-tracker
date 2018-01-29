@@ -76,6 +76,7 @@ export default {
 
       xhr.addEventListener('load', (event) => {
         this.setApiConfigurationValue('token_details', JSON.parse(event.currentTarget.response))
+        this.getSocketToken()
       })
 
       xhr.open('POST', `${this.apiBase}/token`)
@@ -90,14 +91,10 @@ export default {
       xhr.withCredentials = true
 
       xhr.addEventListener('load', (event) => {
-        if (this.readyState === this.DONE) {
-          console.log('WE get this frm the access request')
-          console.log(this.responseText)
-        }
+        this.setApiConfigurationValue('socket_token', JSON.parse(event.currentTarget.response).socket_token)
       })
 
-      xhr.open('GET', `${this.apiBase}/socket/token?access_token=${this.apiConfiguration.oauthCode}`)
-
+      xhr.open('GET', `${this.apiBase}/socket/token?access_token=${this.apiConfiguration.token_details.access_token}`)
       xhr.send(data)
     },
 
