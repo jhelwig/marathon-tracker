@@ -40,6 +40,14 @@ export default {
       const oauthCode = this.$route.query.code
       this.getAccessToken(oauthCode)
     }
+
+    if (!this.apiConfiguration.socketToken && this.apiConfiguration.tokenDetails && this.apiConfiguration.tokenDetails.access_token) {
+      this.getSocketToken()
+    }
+
+    if (this.apiConfiguration.socketToken) {
+      this.startEventSocketStream()
+    }
   },
   computed: {
     apiConfiguration () {
@@ -75,8 +83,8 @@ export default {
       xhr.withCredentials = true
 
       xhr.addEventListener('load', (event) => {
-        this.setApiConfigurationValue('token_details', JSON.parse(event.currentTarget.response))
-        this.getSocketToken()
+        this.setApiConfigurationValue('tokenDetails', JSON.parse(event.currentTarget.response))
+        this.$router.replace('/')
       })
 
       xhr.open('POST', `${this.apiBase}/token`)
@@ -91,10 +99,11 @@ export default {
       xhr.withCredentials = true
 
       xhr.addEventListener('load', (event) => {
-        this.setApiConfigurationValue('socket_token', JSON.parse(event.currentTarget.response).socket_token)
+        this.setApiConfigurationValue('socketToken', JSON.parse(event.currentTarget.response).socket_token)
+        this.$router.replace('/')
       })
 
-      xhr.open('GET', `${this.apiBase}/socket/token?access_token=${this.apiConfiguration.token_details.access_token}`)
+      xhr.open('GET', `${this.apiBase}/socket/token?access_token=${this.apiConfiguration.tokenDetails.access_token}`)
       xhr.send(data)
     },
 
@@ -106,6 +115,16 @@ export default {
       let apiConfig = this.apiConfiguration
       apiConfig[name] = value
       localStorage.setItem('apiConfiguration', JSON.stringify(apiConfig))
+    },
+
+    startEventSocketStream () {
+      const streamlabs = io(`https://sockets.streamlabs.com?token=${this.apiConfiguration.socketToken}`)
+
+      streamlabs.on('event', this.handleSocketEvent.bind(this))
+    },
+
+    handleSocketEvent (eventData) {
+      console.log(eventData)
     }
   }
 }
