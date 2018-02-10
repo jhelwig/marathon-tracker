@@ -19,11 +19,23 @@
         <button type="submit">Save</button>
       </form>
     </div>
+    <div v-if="!needsConfiguration">
+      <p>
+        Total Donations: ${{ totalDonations }}<br />
+        Total Bits: {{ totalBits }}<br />
+      </p>
+      <p>
+        Doraemon GB any% (glitched): {{ doraemonRuns }} ({{ donationDoraemonRuns }} + {{ bitsDoraemonRuns }})<br />
+        TGM1 Minutes: {{ tgmMinutes }}<br />
+      </p>
+    </div>
   </div>
 </template>
 
 <script>
 import config from '../../config/index'
+// http://dexie.org/
+import Dexie from 'dexie'
 
 export default {
   name: 'Dashboard',
@@ -31,27 +43,66 @@ export default {
     return {
       apiBase: config.dev.streamlabsApiBase,
       apiConfigurationForm: {},
-      apiConfigurationErrors: []
+      apiConfigurationErrors: [],
+      totalDonations: 0,
+      totalBits: 0,
+      subPoints: 0,
+      doraemonRuns: 0,
+      donationDoraemonRuns: 0,
+      bitsDoraemonRuns: 0,
+      tgmMinutes: 0
+    }
+  },
+  watch: {
+    totalDonations: function (newTotalDonations, oldTotalDonations) {
+      let doraemonRuns = Math.floor(newTotalDonations / 10)
+      this.donationDoraemonRuns = doraemonRuns
+    },
+    totalBits: function (newTotalBits, oldTotalBits) {
+      let doraemonRuns = Math.floor(newTotalBits / 100)
+      this.bitsDoraemonRuns = doraemonRuns
     }
   },
   created () {
-    console.log('We are in the created hook')
-    if (this.$route.query.code) {
-      const oauthCode = this.$route.query.code
-      this.getAccessToken(oauthCode)
-    }
+    // this.db.delete()
+    this.db.version(1).stores({
+      donations: '_id,name,amount,message,currency,id'
+    })
+    this.db.version(2).stores({
+      bits: '_id,name,amount,message,currency'
+    })
 
-    if (!this.apiConfiguration.socketToken && this.apiConfiguration.tokenDetails && this.apiConfiguration.tokenDetails.access_token) {
-      this.getSocketToken()
-    }
+    this.db.open().then(function (db) {
+      // Database opened successfully
+    }).catch(function (err) {
+      console.log(err)
+    })
 
-    if (this.apiConfiguration.socketToken) {
-      this.startEventSocketStream()
+    this.configureApi()
+
+    if (this.hasValidConfiguration()) {
+      this.db.donations.toCollection().toArray((donations) => {
+        this.totalDonations = donations.reduce((a, b) => a + b.amount, 0)
+      })
+      this.db.bits.toCollection().toArray((bits) => {
+        this.totalBits = bits.reduce((a, b) => a + b.amount, 0)
+      })
     }
+    this.$watch(
+      function () {
+        return this.donationDoraemonRuns + this.bitsDoraemonRuns
+      },
+      function (newRunTotal, oldRunTotal) {
+        if (newRunTotal > 100) {
+          this.doraemonRuns = 100
+        } else {
+          this.doraemonRuns = newRunTotal
+        }
+      }
+    )
   },
   computed: {
     apiConfiguration () {
-      console.log('Wr are pretending to compute', localStorage.getItem('apiConfiguration'))
       return JSON.parse(localStorage.getItem('apiConfiguration')) || {}
     },
     hasConfigErrors () {
@@ -59,9 +110,27 @@ export default {
     },
     needsConfiguration () {
       return !this.hasValidConfiguration()
+    },
+    db () {
+      return new Dexie('marathon_database')
     }
   },
   methods: {
+    configureApi () {
+      if (this.$route.query.code) {
+        const oauthCode = this.$route.query.code
+        this.getAccessToken(oauthCode)
+      }
+
+      if (!this.apiConfiguration.socketToken && this.apiConfiguration.tokenDetails && this.apiConfiguration.tokenDetails.access_token) {
+        this.getSocketToken()
+      }
+
+      if (this.apiConfiguration.socketToken) {
+        this.startEventSocketStream()
+      }
+    },
+
     configurationSubmit (event) {
       event.preventDefault()
       this.setApiConfigurationValue('clientId', this.apiConfigurationForm.clientId)
@@ -85,6 +154,7 @@ export default {
       xhr.addEventListener('load', (event) => {
         this.setApiConfigurationValue('tokenDetails', JSON.parse(event.currentTarget.response))
         this.$router.replace('/')
+        this.configureApi()
       })
 
       xhr.open('POST', `${this.apiBase}/token`)
@@ -101,6 +171,7 @@ export default {
       xhr.addEventListener('load', (event) => {
         this.setApiConfigurationValue('socketToken', JSON.parse(event.currentTarget.response).socket_token)
         this.$router.replace('/')
+        this.configureApi()
       })
 
       xhr.open('GET', `${this.apiBase}/socket/token?access_token=${this.apiConfiguration.tokenDetails.access_token}`)
@@ -125,6 +196,42 @@ export default {
 
     handleSocketEvent (eventData) {
       console.log(eventData)
+      if (eventData.type === 'donation') {
+        // donations: '_id,name,amount,message,currency,id'
+        eventData.message.forEach((donationDetails) => {
+          this.db.donations.put({
+            _id: donationDetails._id,
+            name: donationDetails.name,
+            amount: Number(donationDetails.amount),
+            message: donationDetails.message,
+            currency: donationDetails.currency,
+            id: donationDetails.id
+          }).then(() => {
+            this.db.donations.toCollection().toArray((donations) => {
+              this.totalDonations = donations.reduce((a, b) => a + b.amount, 0)
+            })
+          }).catch(function (error) {
+            console.log(error)
+          })
+        })
+      } else if (eventData.type === 'bits') {
+        // bits: '_id,name,amount,message,currency'
+        eventData.message.forEach((bitsDetails) => {
+          this.db.bits.put({
+            _id: bitsDetails._id,
+            name: bitsDetails.name,
+            amount: Number(bitsDetails.amount),
+            message: bitsDetails.message,
+            currency: bitsDetails.currency
+          }).then(() => {
+            this.db.bits.toCollection().toArray((bits) => {
+              this.totalBits = bits.reduce((a, b) => a + b.amount, 0)
+            })
+          }).catch(function (error) {
+            console.log(error)
+          })
+        })
+      }
     }
   }
 }
