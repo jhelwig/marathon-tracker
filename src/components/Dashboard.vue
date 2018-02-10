@@ -23,6 +23,8 @@
       <p>
         Total Donations: ${{ totalDonations }}<br />
         Total Bits: {{ totalBits }}<br />
+        Sub Points: {{ subPoints }}<br />
+        Resub Months: {{ resubMonths }}<br />
       </p>
       <p>
         Doraemon GB any% (glitched): {{ doraemonRuns }} ({{ donationDoraemonRuns }} + {{ bitsDoraemonRuns }})<br />
@@ -47,10 +49,11 @@ export default {
       totalDonations: 0,
       totalBits: 0,
       subPoints: 0,
+      resubMonths: 0,
       doraemonRuns: 0,
       donationDoraemonRuns: 0,
       bitsDoraemonRuns: 0,
-      tgmMinutes: 0
+      tgmMinutes: 60
     }
   },
   watch: {
@@ -71,6 +74,9 @@ export default {
     this.db.version(2).stores({
       bits: '_id,name,amount,message,currency'
     })
+    this.db.version(3).stores({
+      subscriptions: '_id,name,sub_plan,months,message'
+    })
 
     this.db.open().then(function (db) {
       // Database opened successfully
@@ -87,6 +93,7 @@ export default {
       this.db.bits.toCollection().toArray((bits) => {
         this.totalBits = bits.reduce((a, b) => a + b.amount, 0)
       })
+      this.updateSubPointsMonths()
     }
     this.$watch(
       function () {
@@ -97,6 +104,18 @@ export default {
           this.doraemonRuns = 100
         } else {
           this.doraemonRuns = newRunTotal
+        }
+      }
+    )
+    this.$watch(
+      function () {
+        return 60 + this.subPoints + this.resubMonths
+      },
+      function (newTgmMinutes, oldTgmMinutes) {
+        if (newTgmMinutes > 240) {
+          this.tgmMinutes = 240
+        } else {
+          this.tgmMinutes = newTgmMinutes
         }
       }
     )
@@ -231,7 +250,47 @@ export default {
             console.log(error)
           })
         })
+      } else if (eventData.type === 'subscription') {
+        // subscriptions: '_id,name,sub_plan,months,message'
+        eventData.message.forEach((subscriptionDetails) => {
+          this.db.subscriptions.put({
+            _id: subscriptionDetails._id,
+            name: subscriptionDetails.name,
+            sub_plan: subscriptionDetails.sub_plan,
+            months: subscriptionDetails.months,
+            message: subscriptionDetails.message
+          }).then(this.updateSubPointsMonths.bind(this))
+        })
       }
+    },
+
+    updateSubPointsMonths () {
+      this.db.subscriptions.toCollection().toArray((subscriptions) => {
+        let newResubMonths = 0
+        let newSubPoints = 0
+
+        subscriptions.forEach(function (subscription) {
+          if (subscription.months > 1) {
+            newResubMonths += subscription.months
+          }
+          switch (subscription.sub_plan) {
+            case 'Prime':
+            case '1000':
+              newSubPoints += 1
+              break
+            case '2000':
+              newSubPoints += 2
+              break
+            case '3000':
+              newSubPoints += 3
+              break
+            default:
+              console.log('Unknown sub_plan:', subscription.sub_plan)
+          }
+        })
+        this.resubMonths = newResubMonths
+        this.subPoints = newSubPoints
+      })
     }
   }
 }
