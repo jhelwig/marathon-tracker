@@ -109,7 +109,7 @@ export default {
     )
     this.$watch(
       function () {
-        return 60 + this.subPoints + this.resubMonths
+        return 60 + ((this.subPoints + this.resubMonths) * 5)
       },
       function (newTgmMinutes, oldTgmMinutes) {
         if (newTgmMinutes > 240) {
